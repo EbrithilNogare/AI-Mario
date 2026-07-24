@@ -26,7 +26,7 @@
         <p><b>neat</b> &mdash; the <i>wiring</i> evolves too: minimal brains grow neurons &amp; connections.</p>
       </div>
       <div class="help-method" data-help-algo="rl">
-        <p><b>dqn</b> &mdash; one brain learns <i>while</i> playing; &epsilon; = how randomly it acts.</p>
+        <p><b>imitation</b> &mdash; <i>you</i> play with WASD / space; the brain learns to copy you.</p>
       </div>
     </div>
     <div class="help-section" data-help-for="panelInputs">
@@ -47,19 +47,21 @@
     </div>
     <div class="help-section" data-help-for="panelTraining">
       <h3>5. training</h3>
-      <p><b>rewards</b> shape personality: raise coin and it detours for coins; punish jumps and it hops only when needed. all three methods optimize this same score (the dqn receives it per step). <b>distance</b> is scaled by progress
+      <p><b>rewards</b> shape personality: raise coin and it detours for coins; punish jumps and it hops only when needed. all three methods chase this same score (imitation scores your runs with it). <b>distance</b> is scaled by progress
         (1000 &rarr; 1% of the level = 10 points) &middot; <b>time</b> is charged per second.</p>
       <p><b>fit last X maps</b>: a fresh random level is added every generation/iteration and scores are averaged over the last X, forcing it to generalize instead of memorizing.</p>
       <p class="help-method" data-help-algo="neat">the species compatibility threshold self-adjusts to hold roughly the target number of species.</p>
-      <p class="help-method" data-help-algo="rl">episodes rotate through the last X maps while the agent learns from per-step rewards with &epsilon;-greedy exploration (&epsilon; shown in the stats decays as it learns).</p>
+      <p class="help-method" data-help-algo="rl"><b>train by human</b>: play (WASD / space), it copies you live &mdash; moves right before a death are dropped, wins count double, your demos are never overwritten by self-play. <b>train auto</b>: it trains itself with the chosen strategy; changes that lower the held-out score are discarded. every second = one generation on the reference level; each run end scores 10 held-out maps &rarr; best / average lines.</p>
       <p><b>train</b> runs until you stop it &middot; <b>watch best</b> replays the best brain with its senses drawn &middot; <b>new level</b> injects an unseen map.</p>
-      <p>hazards: pit / spike / enemy = death (goombas &amp; flyers can be stomped, red spinies cannot) &middot; springs bounce high &middot; reach the flag to win.</p>
+      <p>every run has a <b>time budget</b>: a small head start plus extra time earned per pixel of progress (2&times; the optimal pace). slow-but-moving survives; stalling runs out. finishing faster scores more via the time reward.</p>
+      <p>hazards: pit / spike / enemy = death (goombas &amp; flyers can be stomped while falling onto them, red spinies cannot) &middot; springs bounce high &middot; reach the flag to win.</p>
     </div>
     <div class="help-section" data-help-for="panelProgress">
       <h3>6. progress</h3>
-      <p><i style="color:#111">&#9644;</i> black = best score &middot; <i style="color:#999">&#9644;</i> grey = population / episode average &middot; <i style="color:#1565c0">&#9644;</i> blue = benchmark: the best brain on a hidden level it
-        never trains on, per generation / iteration &mdash; each method keeps its own history.</p>
-      <p>if black climbs but blue doesn&rsquo;t, it is memorizing, not learning.</p>
+      <div class="legend-item"><span class="legend-line" style="background:#111"></span> best score this generation / run</div>
+      <div class="legend-item"><span class="legend-line" style="background:#999"></span> population average (imitation: the AI replaying your level)</div>
+      <div class="legend-item"><span class="legend-line" style="background:#1565c0"></span> benchmark &mdash; best brain on a hidden level it never trains on</div>
+      <p>hover the chart to inspect any generation. if black climbs but blue doesn&rsquo;t, it is memorizing, not learning.</p>
     </div>
   </aside>
 
@@ -68,7 +70,7 @@
     <div class="row">
       <button id="algo_ga" class="algo-button active">GENETIC ALGORITHM</button>
       <button id="algo_neat" class="algo-button">NEAT</button>
-      <button id="algo_rl" class="algo-button">REINFORCEMENT (DQN)</button>
+      <button id="algo_rl" class="algo-button">IMITATION (PLAY &amp; TEACH)</button>
     </div>
   </div>
 
@@ -118,17 +120,22 @@
           type="number" min="1" max="20" value="8"></label>
     </div>
     <div class="row" style="margin-bottom:8px" data-algo="rl">
-      <label>learning rate<sup class="tip" data-tip="size of each weight update &mdash; too high and learning explodes, too low and it crawls">?</sup> <input id="rlLearningRate" type="number" step="0.0005" value="0.001"></label>
-      <label>discount &gamma;<sup class="tip" data-tip="how much future reward matters vs the immediate one &mdash; closer to 1 = far-sighted (plans ahead), lower = greedy">?</sup> <input id="rlGamma" type="number" step="0.01"
-          value="0.99"></label>
-      <label>&epsilon; decay<sup class="tip" data-tip="after every episode the exploration rate &epsilon; is multiplied by this &mdash; closer to 1 = keeps trying random actions for longer before trusting itself">?</sup> <input
-          id="rlEpsilonDecay" type="number" step="0.001" value="0.99"></label>
-      <label>batch<sup class="tip" data-tip="how many remembered moments are replayed per learning update &mdash; bigger = smoother but slower updates">?</sup> <input id="rlBatchSize" type="number" step="16" value="128"></label>
-      <label>episodes / iter<sup class="tip" data-tip="episodes played between chart points and benchmark runs &mdash; purely how often progress is reported">?</sup> <input id="rlEpisodes" type="number" min="1" max="20" value="3"></label>
+      <label>learning rate<sup class="tip" data-tip="size of each weight update &mdash; too high and learning explodes, too low and it crawls">?</sup> <input id="rlLearningRate" type="number" step="0.0005" value="0.002"></label>
+      <label>batch<sup class="tip" data-tip="how many recorded moments are replayed per learning update &mdash; bigger = smoother but slower updates">?</sup> <input id="rlBatchSize" type="number" step="8" value="64"></label>
+      <label>epochs / run<sup class="tip" data-tip="besides learning live while you play, this many consolidation passes over all recorded demonstrations run after each of your runs &mdash; more = imitates harder but risks overfitting your quirks">?</sup> <input id="rlEpochs" type="number"
+          min="1" max="20" value="4"></label>
+      <label>drop before death<sup class="tip" data-tip="a move is only learned once you survive it by this many frames &mdash; die and the fatal tail is discarded, never trained on (45 frames &asymp; 0.75s)">?</sup> <input id="rlDropFrames"
+          type="number" min="0" max="180" value="45"></label>
+      <label>auto strategy<sup class="tip" data-tip="self-imitation: copies its own runs that beat greedy play on the same level, rolling back training that lowers the held-out score &middot; hill-climb: random weight nudges, kept only if the held-out score improves &middot; dqn: reward-driven fine-tuning of the taught brain (can surpass the teacher)">?</sup>
+        <select id="rlAutoStrategy">
+          <option value="imitation">self-imitation</option>
+          <option value="hillclimb">hill-climb</option>
+          <option value="dqn">dqn</option>
+        </select></label>
     </div>
     <div class="row" style="margin-bottom:8px">
-      <label>fit last <input id="mapWindow" type="number" min="1" max="50" value="10"> maps<sup class="tip"
-          data-tip="scores are averaged over this many recent maps &mdash; more maps = must generalize better, but each evaluation takes longer">?</sup></label>
+      <span data-algo="ga neat"><label>fit last <input id="mapWindow" type="number" min="1" max="50" value="10"> maps<sup class="tip"
+          data-tip="scores are averaged over this many recent maps &mdash; more maps = must generalize better, but each evaluation takes longer">?</sup></label></span>
       <span class="stats">fitness rewards:</span>
       <label>coin<sup class="tip" data-tip="points per coin collected &mdash; raise it and the AI starts detouring for coins">?</sup> <input id="rewardCoin" type="number" step="1" value="20"></label>
       <label>enemy kill<sup class="tip" data-tip="points for stomping an enemy &mdash; raise it to encourage hunting instead of avoiding">?</sup> <input id="rewardKill" type="number" step="1" value="5"></label>
@@ -139,6 +146,7 @@
     </div>
     <div class="row" style="margin-bottom:8px">
       <button id="buttonTrain">TRAIN</button>
+      <button id="buttonTrainAuto" data-algo="rl">TRAIN AUTO</button>
       <button id="buttonWatch">WATCH BEST</button>
       <button id="buttonLevel">NEW LEVEL</button>
     </div>

@@ -20,12 +20,14 @@ function createLevelModule() {
     };
   }
 
+  // Follows a jump arc: low at both ends, peaking in the middle — so every
+  // coin lies on the path of a normal jump across the gap.
   function coinArc(level, fromX, toX, peakY, count) {
+    const edgeY = GROUND_Y - 30;
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0.5 : i / (count - 1);
-      const x = fromX + (toX - fromX) * t;
-      const y = peakY + (GROUND_Y - 100 - peakY) * (2 * t - 1) * (2 * t - 1);
-      level.coins.push({ x, y });
+      const arc = 1 - (2 * t - 1) * (2 * t - 1);
+      level.coins.push({ x: fromX + (toX - fromX) * t, y: edgeY + (peakY - edgeY) * arc });
     }
   }
 
@@ -38,7 +40,7 @@ function createLevelModule() {
 
   function addFlat(level, x, difficulty, random) {
     const coinCount = 2 + (random() * 3 | 0);
-    const height = random() < 0.5 ? 70 : 100;
+    const height = random() < 0.5 ? 55 : 80; // max jump height is ~82px
     for (let i = 0; i < coinCount; i++) {
       level.coins.push({ x: x + i * 24, y: GROUND_Y - height });
     }
@@ -118,10 +120,11 @@ function createLevelModule() {
   }
 
   function addGapToLedge(level, x, difficulty, random) {
-    const pitWidth = 40 + (random() * 4 | 0) * 8;
-    level.pits.push({ x, w: Math.min(SAFE_PIT, pitWidth) });
-    const ledgeHeight = 32 + (random() < 0.5 ? 16 : 0);
-    const ledgeX = x + Math.min(SAFE_PIT, pitWidth);
+    // a single jump must clear the pit AND land on the ledge, so both stay small
+    const pitWidth = Math.min(56, 40 + (random() * 3 | 0) * 8);
+    level.pits.push({ x, w: pitWidth });
+    const ledgeHeight = 32;
+    const ledgeX = x + pitWidth;
     level.obstacles.push({ x: ledgeX, w: 48 + (random() * 2 | 0) * 16, h: ledgeHeight });
     coinArc(level, x + 6, ledgeX - 6, GROUND_Y - ledgeHeight - 40, 3);
     const ledgeWidth = level.obstacles[level.obstacles.length - 1].w;
@@ -159,12 +162,13 @@ function createLevelModule() {
         range: 45 + random() * (45 + difficulty * 50), type: "flyer"
       });
     }
-    for (let i = 0; i < 3; i++) level.coins.push({ x: x + 30 + i * 24, y: GROUND_Y - 96 });
+    for (let i = 0; i < 3; i++) level.coins.push({ x: x + 30 + i * 24, y: GROUND_Y - 80 });
     return x + 70 + (count - 1) * 110;
   }
 
   function addSpikes(level, x, difficulty, random) {
-    const width = 32 + (random() < 0.4 + difficulty * 0.4 ? 16 : 0);
+    // jump carries ~90px; keep spikes clearly shorter than that
+    const width = 24 + (random() < 0.4 + difficulty * 0.4 ? 16 : 0);
     level.spikes.push({ x, w: width });
     coinArc(level, x + 6, x + width - 6, GROUND_Y - 74, 3);
     return x + width;
@@ -179,19 +183,21 @@ function createLevelModule() {
     return x + 110;
   }
 
+  // Weighted by difficulty: near the start almost only flats, pipes and lone
+  // pits appear; the tricky combinations take over toward the flag.
   const SEGMENTS = [
-    { weight: () => 1.2, build: addFlat },
-    { weight: () => 1.0, build: addPipe },
-    { weight: d => 1.0 + d * 0.4, build: addPipeIsland },
-    { weight: d => 0.8 + d * 0.6, build: addTwoTierIslands },
-    { weight: () => 1.0, build: addPit },
-    { weight: d => 0.6 + d * 0.8, build: addPitWithStones },
-    { weight: d => 0.7 + d * 0.4, build: addGapToLedge },
-    { weight: d => 0.6 + d * 0.5, build: addPipeStairs },
-    { weight: d => 0.9 + d * 0.6, build: addWalkers },
-    { weight: d => 0.6 + d * 0.7, build: addFlyers },
-    { weight: d => 0.7 + d * 0.5, build: addSpikes },
-    { weight: () => 0.7, build: addSpring }
+    { weight: d => 1.8 - d * 1.0, build: addFlat },
+    { weight: d => 1.2 - d * 0.4, build: addPipe },
+    { weight: d => 0.3 + d * 1.0, build: addPipeIsland },
+    { weight: d => 0.1 + d * 1.2, build: addTwoTierIslands },
+    { weight: d => 0.5 + d * 0.7, build: addPit },
+    { weight: d => 0.1 + d * 1.2, build: addPitWithStones },
+    { weight: d => 0.1 + d * 1.0, build: addGapToLedge },
+    { weight: d => 0.1 + d * 1.0, build: addPipeStairs },
+    { weight: d => 0.4 + d * 1.0, build: addWalkers },
+    { weight: d => 0.1 + d * 1.1, build: addFlyers },
+    { weight: d => 0.2 + d * 1.0, build: addSpikes },
+    { weight: () => 0.6, build: addSpring }
   ];
 
   function pickSegment(difficulty, random) {
@@ -217,7 +223,9 @@ function createLevelModule() {
     while (x < level.flagX - 320) {
       const difficulty = Math.min(1, x / (LEVEL_LENGTH - 800));
       x = pickSegment(difficulty, random).build(level, x, difficulty, random);
-      x += 120 - difficulty * 50 + random() * (150 - difficulty * 60);
+      // always leave at least ~80px of flat ground: room to land after a jump
+      // before the next hazard, even at full difficulty
+      x += 80 + (1 - difficulty) * 60 + random() * 100;
     }
     return level;
   }

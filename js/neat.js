@@ -4,13 +4,17 @@
 // Genomes are plain JSON objects so they can be sent to workers as-is.
 function createNeatModule() {
   const WEIGHT_MUTATE_RATE = 0.8;
-  const WEIGHT_PERTURB = 0.5;
-  const WEIGHT_RESET_RATE = 0.1;
-  const ADD_CONNECTION_RATE = 0.1;
-  const ADD_NODE_RATE = 0.04;
+  const WEIGHT_PERTURB_SIGMA = 0.15; // gaussian nudge — children stay close to parents
+  const WEIGHT_RESET_RATE = 0.02;
+  const ADD_CONNECTION_RATE = 0.2;
+  const ADD_NODE_RATE = 0.08;
   const CROSSOVER_RATE = 0.75;
   const STAGNATION_LIMIT = 15;
   const SURVIVAL_RATIO = 0.5;
+
+  function gaussian() {
+    return Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+  }
 
   let innovationCounter = 0;
   let nodeCounter = 0;
@@ -137,8 +141,8 @@ function createNeatModule() {
   function mutate(genome) {
     if (Math.random() < WEIGHT_MUTATE_RATE) {
       for (const connection of genome.connections) {
-        if (Math.random() < WEIGHT_RESET_RATE) connection.weight = (Math.random() * 2 - 1) * 2;
-        else connection.weight += (Math.random() * 2 - 1) * WEIGHT_PERTURB;
+        if (Math.random() < WEIGHT_RESET_RATE) connection.weight = Math.random() * 2 - 1;
+        else connection.weight += gaussian() * WEIGHT_PERTURB_SIGMA;
       }
     }
     if (Math.random() < ADD_CONNECTION_RATE) mutateAddConnection(genome);

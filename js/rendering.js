@@ -159,11 +159,12 @@ function createRenderingModule(Simulation) {
         gameContext.stroke();
       } else if (entry.id === "tileGrid") {
         const { gridWidth, gridHeight } = sensorReader.config;
+        const anchor = Simulation.gridAnchor(state);
         for (let row = 0; row < gridHeight; row++) {
           for (let column = 0; column < gridWidth; column++) {
             const value = sensorVector[entry.offset + row * gridWidth + column];
-            const x = state.x + (column - 1) * GRID_CELL - cameraX;
-            const y = GROUND_Y - (row + 1) * GRID_CELL;
+            const x = anchor.baseX + column * GRID_CELL - cameraX;
+            const y = anchor.baseY - row * GRID_CELL;
             if (value === 1) gameContext.fillStyle = "rgba(0,120,0,0.18)";
             else if (value === -1) gameContext.fillStyle = "rgba(200,0,0,0.18)";
             else if (value === 0.5) gameContext.fillStyle = "rgba(220,170,0,0.25)";
@@ -476,10 +477,19 @@ function createRenderingModule(Simulation) {
     }
   }
 
+  let chartData = { history: [], levelMarkers: [] };
+
   function drawChart(history, levelMarkers) {
+    chartData = { history, levelMarkers };
+    renderChart(null);
+  }
+
+  function renderChart(hover) {
+    const { history, levelMarkers } = chartData;
     chartContext.fillStyle = "#fff";
     chartContext.fillRect(0, 0, chartCanvas.width, chartCanvas.height);
     chartContext.strokeStyle = "#111";
+    chartContext.lineWidth = 1;
     chartContext.strokeRect(0.5, 0.5, chartCanvas.width - 1, chartCanvas.height - 1);
     if (!history.length) {
       chartContext.fillStyle = "#999";
@@ -508,9 +518,9 @@ function createRenderingModule(Simulation) {
     }
     chartContext.setLineDash([]);
 
-    const drawLine = (key, color) => {
+    const drawLine = (key, color, width) => {
       chartContext.strokeStyle = color;
-      chartContext.lineWidth = 1.5;
+      chartContext.lineWidth = width;
       chartContext.beginPath();
       history.forEach((entry, index) => {
         if (index) chartContext.lineTo(chartX(index), chartY(entry[key]));
@@ -518,16 +528,61 @@ function createRenderingModule(Simulation) {
       });
       chartContext.stroke();
     };
-    drawLine("average", "#999");
-    drawLine("benchmark", "#1565c0");
-    drawLine("best", "#111");
+    drawLine("average", "#999", 1.5);
+    drawLine("benchmark", "#1565c0", 2);
+    drawLine("best", "#111", 2);
 
     chartContext.fillStyle = "#111";
     chartContext.font = "11px Courier New";
     chartContext.fillText(maxFitness | 0, 12, 14);
     if (minFitness < 0) chartContext.fillText(minFitness | 0, 12, chartCanvas.height - 6);
     chartContext.fillText("gen " + history.length, chartCanvas.width - 70, chartCanvas.height - 6);
+
+    if (!hover) return;
+    const index = Math.max(0, Math.min(history.length - 1,
+      Math.round((hover.x - 10) / (chartCanvas.width - 20) * Math.max(1, history.length - 1))));
+    const cursorScore = minFitness + (chartCanvas.height - 12 - hover.y) / (chartCanvas.height - 30) * range;
+    const entry = history[index];
+    const x = chartX(index);
+
+    chartContext.strokeStyle = "#c62828";
+    chartContext.lineWidth = 1;
+    chartContext.beginPath();
+    chartContext.moveTo(x, 2);
+    chartContext.lineTo(x, chartCanvas.height - 2);
+    chartContext.stroke();
+    for (const [key, color] of [["best", "#111"], ["average", "#999"], ["benchmark", "#1565c0"]]) {
+      chartContext.fillStyle = color;
+      chartContext.beginPath();
+      chartContext.arc(x, chartY(entry[key]), 3, 0, 7);
+      chartContext.fill();
+    }
+
+    const lines = [
+      "gen " + (index + 1) + " · y " + (cursorScore | 0),
+      "best " + (entry.best | 0) + "  avg " + (entry.average | 0) + "  bench " + (entry.benchmark | 0)
+    ];
+    chartContext.font = "11px Courier New";
+    const boxWidth = Math.max(...lines.map(line => chartContext.measureText(line).width)) + 12;
+    const boxX = x + boxWidth + 14 > chartCanvas.width ? x - boxWidth - 8 : x + 8;
+    const boxY = Math.max(4, Math.min(chartCanvas.height - 36, hover.y - 16));
+    chartContext.fillStyle = "rgba(255,255,255,0.92)";
+    chartContext.fillRect(boxX, boxY, boxWidth, 32);
+    chartContext.strokeStyle = "#111";
+    chartContext.strokeRect(boxX + 0.5, boxY + 0.5, boxWidth, 32);
+    chartContext.fillStyle = "#111";
+    chartContext.fillText(lines[0], boxX + 6, boxY + 13);
+    chartContext.fillText(lines[1], boxX + 6, boxY + 26);
   }
+
+  chartCanvas.addEventListener("mousemove", event => {
+    const rect = chartCanvas.getBoundingClientRect();
+    renderChart({
+      x: (event.clientX - rect.left) * chartCanvas.width / rect.width,
+      y: (event.clientY - rect.top) * chartCanvas.height / rect.height
+    });
+  });
+  chartCanvas.addEventListener("mouseleave", () => renderChart(null));
 
   return { drawGame, drawNetwork, drawNeatNetwork, drawChart };
 }
